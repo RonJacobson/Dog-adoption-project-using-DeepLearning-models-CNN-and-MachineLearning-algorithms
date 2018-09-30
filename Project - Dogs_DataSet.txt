@@ -1,0 +1,192 @@
+import pandas as pd
+
+dog_train = pd.read_csv('dog_shelter_outcomes.csv')
+
+####################################################################################################
+####################### Data Cleaning => Check if we have a complete dataset #######################
+####################################################################################################
+
+#print(dog_train.info())
+    # Looks like the following columns have some missing values: outcome_subtype, age_upon_outcome, name, outcome_type.
+
+    # (1) outcome_subtype has too many missing values (~70%), therefore we won't use it for our prediction.
+    # (2) name column wll be dropped too form our prediction since it doesn't generate any additional value.
+dog_train = dog_train.drop(['name', 'outcome_subtype', 'animal_id', 'date_of_birth',
+                            'age_upon_outcome', 'Unnamed: 9', 'Unnamed: 10'], axis=1)
+
+# (3) 'outcome_age' has only 3 instances missing. We'll fill them with the mode value.
+#print(dog_train.describe())
+dog_train['outcome_age'].fillna(value='1', axis=0, inplace=True)
+
+    # (4) outcome_type is our prediction (our 'y'). Therefore:
+        # (a) since it's the training set the missing rows will be dropped.
+        # (b) since we'd like the prediction to be more precise we'll replace the all the values to "Adoption" / "Not Adoption"
+dog_train.dropna(subset=['outcome_type'], axis=0, inplace=True)
+dog_train['outcome_type'].replace(to_replace=['Missing', 'Disposal', 'Euthanasia', 'Died', 'Transfer'],
+                                  value='Not_Adopted',inplace=True)
+dog_train.replace(to_replace=['Adoption','Return to Owner','Rto-Adopt'],value='Adopted',inplace=True)
+
+#print(dog_train.describe(include='O'))
+    # Here we understand the following information:
+    # (1) not all animal_id's are unique -  For our purpose it's fine, the same dog can be in a shelter several times. We want to know if it was adopted.
+    # (2) the 'sex_upon_outcome' Column has 3 categories.
+    # (3) the 'outcome_type' Column has 8 categories.
+
+#print(dog_train.groupby('sex_upon_outcome').count())
+    # The 3rd Category is 'Unknown'. Since it's only 238 cases (0.5%) we could drop those lines.
+sex_unknown = dog_train[dog_train['sex_upon_outcome'] == 'Unknown']
+dog_train = dog_train.drop(sex_unknown.index,axis=0)
+
+#print(dog_train.groupby('outcome_type').count())
+
+    #Let's change the 'age' column to numeric so we'll be able to make manipulations on it.
+dog_train[['outcome_age']] = dog_train[['outcome_age']].apply(pd.to_numeric)
+
+    # Let's check all is amazing
+#print(dog_train.info())
+#print(dog_train.isnull().sum())
+
+
+####################################################################################################
+######## Exploratory Data Analysis = Check influence of each row on the output (outcome_type)#######
+####################################################################################################
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+    # Let's look at age column:
+#sns.FacetGrid(data=dog_train,hue='outcome_type',ylim=(0,0.5)).map(sns.kdeplot,'outcome_age', shade = True)
+#sns.boxplot(x='outcome_type',y='outcome_age',data=dog_train).set_ylim(top=15)
+#plt.show()
+    # since there's a diversity between the outcome types we'll keep this feature.
+
+
+    # Let's look at sex column:
+#sns.countplot(x='outcome_type',hue='sex_upon_outcome', data=dog_train)
+#plt.ylim(0, max(dog_train['sex_upon_outcome'].value_counts()))
+#plt.show()
+    # since there's a diversity between the outcome types we'll keep this feature.
+
+
+# Let's look at breed column:
+    # Since we have 92 uniques, we'll take only the significant ones in order to see correlation.
+sig_breed_list = list(dog_train['breed'].value_counts()
+          [dog_train['breed'].value_counts() >= (dog_train['sex_upon_outcome'].count() * 0.05)].index)
+dog_train_part = dog_train[dog_train['breed'].isin(sig_breed_list)]
+
+#sns.countplot(x="outcome_type",hue="breed", data=dog_train_part)
+#plt.ylim(0,max(dog_train_part['breed'].value_counts()))
+#plt.show()
+    # since there's a diversity between the outcome types we'll keep this feature.
+
+
+# Let's look at color column:
+#sns.countplot(hue="outcome_type",x="color",  data=dog_train)
+#plt.ylim(0,max(dog_train['color'].value_counts()))
+#plt.show()
+    # since there's a diversity between the outcome types we'll keep this feature.
+
+#####################################################################################################
+# Feature Engineering = Removing unneeded columns & Bin features (into categoris) & Making One_Hot ##
+#####################################################################################################
+
+    # Let's Bin the Age Column into groups.
+# Bin our DB
+bins = [-0.01, 0.9, 2, 4, 20]
+# names of our groups
+groups_names = ['new_born', 'puppy', 'adult', 'old_dog']
+# assign the names to the bins
+dog_train['outcome_age_ranges'] = pd.cut(dog_train['outcome_age'], bins, labels=groups_names)
+
+
+# Let's drop the unnecessary columns
+dog_train = dog_train.drop('outcome_age',axis=1)
+
+
+# Finally, Let's ONE_HOT the data
+dog_train = pd.get_dummies(dog_train)
+
+#pd.DataFrame(dog_train).to_csv('ColumsNames.csv')
+
+####################################################################################################
+################### Machine Learning = Make Predictions according to dif models ####################
+####################################################################################################
+
+
+    # We'll try the following models:
+#K Nearest Neighbors (KNN)
+#RandomForestClassifier
+#DecisionTreeClassifier
+
+    # In order to choose the best model we will:
+# (1) Split data into training, validation, and test sets
+# (2) Train each model to training data
+# (3) Test each model on validation data
+# (4) Pick model with highest prediction accuracy on validation set.
+
+from sklearn.naive_bayes import GaussianNB,MultinomialNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+X = dog_train.drop(columns=['outcome_type_Adopted', 'outcome_type_Not_Adopted'], axis=1)
+y = dog_train['outcome_type_Adopted']
+
+    # Let's see how many columns are actually important to our prediction, by the following graph:
+pca_full = PCA(n_components=None)
+pca_full.fit(X)
+#plt.plot(range(0,106), pca_full.explained_variance_ratio_)
+#plt.show()
+
+    # We'll take only the 12 important (diversed) features using the PCA func.
+x_scaled = StandardScaler().fit_transform(X)
+pca = PCA(n_components=12).fit_transform(x_scaled)
+
+
+X_train, X_test, y_train, y_test = train_test_split(pca, y, test_size=0.333)
+
+    # First, let's create a DataFrame to hold the results of each model's accuracy.
+results = pd.DataFrame(columns=['Validation'],
+       index=['DecisionTree', 'RandomForest', 'LogisticRegression', 'GaussianNB'])
+
+
+def log_reg(X_train, X_test, y_train, y_test):
+    log_reg_model = LogisticRegression().fit(X_train,y_train).predict(X_test)
+    log_reg_accuracy = accuracy_score(y_test, log_reg_model)
+    return log_reg_accuracy
+
+results.loc['LogisticRegression', 'Validation'] = log_reg(X_train, X_test, y_train, y_test)
+
+
+def GNB(X_train, X_test, y_train, y_test):
+    GNB_model = GaussianNB().fit(X_train,y_train).predict(X_test)
+    GNB_accuracy = accuracy_score(y_test, GNB_model)
+    return GNB_accuracy
+
+results.loc['GaussianNB', 'Validation'] = GNB(X_train, X_test, y_train, y_test)
+
+
+def DTC(X_train, X_test, y_train, y_test):
+    DTC_model = DecisionTreeClassifier().fit(X_train,y_train).predict(X_test)
+    DTC_accuracy = accuracy_score(y_test, DTC_model)
+    return DTC_accuracy
+
+results.loc['DecisionTree', 'Validation'] = DTC(X_train, X_test, y_train, y_test)
+
+
+def RFC(X_train, X_test, y_train, y_test):
+    RFC_model = RandomForestClassifier().fit(X_train,y_train).predict(X_test)
+    RFC_accuracy= accuracy_score(y_test, RFC_model)
+    return RFC_accuracy
+
+results.loc['RandomForest', 'Validation'] = RFC(X_train, X_test, y_train, y_test)
+
+
+print(results)
+### We'll pick LogisticRegression as our Algorithm ###
+
