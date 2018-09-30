@@ -1,0 +1,98 @@
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D
+from keras.optimizers import adam, SGD
+from keras.preprocessing.image import ImageDataGenerator
+from keras.applications.vgg16 import VGG16
+from sklearn.preprocessing import StandardScaler
+
+# 1 - Load data
+train_dataset = "D:\\Elevation_Academy\\Project\\Pictures_Dogs_DataSet\\Doggies\\Train/"
+validation_dataset = "D:\\Elevation_Academy\\Project\\Pictures_Dogs_DataSet\\Doggies\\Validation/"
+test_dataset = "D:\\Elevation_Academy\\Project\\Pictures_Dogs_DataSet\\Doggies\\Test/"
+
+# 2 - Create network layers
+image_width = 200
+image_height = 200
+
+model = Sequential()
+#VGG16(weights='imagenet',input_shape=(image_width,image_height,3),pooling='MaxPooling2D')
+
+# add convolutional layer (CNN)
+# 32 X 32 pixel matrix
+# 3 layars (RGB)
+# 3 X 3 sliding matrix
+# a pixel value for each colour is between 0-255
+model.add(Conv2D(filters=32,kernel_size=(3,3),input_shape=(image_width,image_height,3),activation='relu'))
+model.add(MaxPooling2D(pool_size=(2,2)))
+# Add another block for more abstract features
+model.add(Conv2D(32,(3,3), input_shape=(image_width, image_height,3),activation='relu'))
+model.add(MaxPooling2D(pool_size=(2,2)))
+# Add another block for more abstract features
+model.add(Conv2D(64,(3,3), input_shape=(image_width, image_height,3),activation='relu'))
+model.add(MaxPooling2D(pool_size=(2,2)))
+# Add another block for more abstract features
+model.add(Conv2D(128,(3,3), input_shape=(image_width, image_height,3),activation='relu'))
+model.add(MaxPooling2D(pool_size=(2,2)))
+
+# Let's DropOut some connections to avoid over-fitting.
+model.add(Flatten())
+model.add(Dense(128,activation='relu'))
+model.add(Dropout(0.25))
+model.add(Dense(32,activation='relu'))
+model.add(Dropout(0.25))
+model.add(Dense(1,activation='sigmoid'))
+
+
+# Using the prediction model
+adam = adam(lr=0.001)
+model.compile(optimizer=adam,loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+# used to rescale the pixel values from [0, 255] to [0, 1] interval
+datagen =ImageDataGenerator(rescale=[1./255])
+
+# automatically retrieve images and their classes for train and validation sets
+train_generator = datagen.flow_from_directory(
+        train_dataset,
+        target_size=(image_width, image_height),
+        batch_size=32,
+        class_mode='binary')
+
+
+validation_generator = datagen.flow_from_directory(
+        validation_dataset,
+        target_size=(image_width, image_height),
+        batch_size=32,
+        class_mode='binary')
+
+#  3 - Train
+model.fit_generator(
+        train_generator,
+        steps_per_epoch=1000,
+        epochs=1000,
+        validation_data=validation_generator,
+        validation_steps=1000)
+
+
+#evaluate the accuracy of the model
+model.evaluate_generator(validation_generator)
+
+
+#save modules
+#model.save('model.h5')
+
+# 5 - predict
+test_generator = datagen.flow_from_directory(
+        directory=test_dataset,
+        target_size=(image_width,image_height),
+        class_mode=None,
+        batch_size=32)
+
+model_classes = model.predict_generator(test_generator)
+for i in model_classes:
+    if i < 0.5:
+        print('Adopted')
+    else:
+        print('Not_adopted')
+
+print(train_generator.class_indices)
